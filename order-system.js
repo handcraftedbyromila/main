@@ -155,7 +155,7 @@ function injectOrderModal() {
             <!-- UTR Number -->
             <div>
               <label class="text-[9px] uppercase tracking-widest text-stone-500 mb-2 block">
-                UPI Ref. No. *
+                UPI Ref. No. <span class="text-stone-700 normal-case tracking-normal">(recommended)</span>
               </label>
               <input id="field-utr" type="text" placeholder="e.g. 426811234567"
                 class="w-full bg-stone-900 border border-stone-800 text-stone-200 text-sm px-4 py-3 placeholder-stone-600 focus:outline-none focus:border-stone-500 transition-colors font-mono">
@@ -317,8 +317,7 @@ function validateForm() {
   if (!/^\d{6}$/.test(pincode))          { showError('Please enter a valid 6-digit pincode.'); return false; }
 
   const utr = document.getElementById('field-utr').value.trim();
-  if (!utr)          { showError('Please enter your UPI Ref. No. from the payment success screen.'); return false; }
-  if (utr.length < 6){ showError('UPI Ref. No. seems too short. Please check and re-enter.'); return false; }
+  if (utr && utr.length < 6) { showError('UPI Ref. No. seems too short. Please check and re-enter.'); return false; }
 
   // Basic spam check
   if (name.length > 100 || address.length > 500) { showError('Input too long. Please check your details.'); return false; }
@@ -348,22 +347,23 @@ async function submitOrder() {
   try {
     const orderId = 'RM' + Date.now();
 
-    // 1. Check if UTR already used
+    // 1. Check if UTR already used (only if provided)
     document.getElementById('submit-text').textContent = 'Verifying payment…';
     const utrValue = document.getElementById('field-utr').value.trim();
-    const utrCheck = await withTimeout(
-      firebase.firestore().collection('orders').where('utr', '==', utrValue).get(),
-      10000, 'UTR check'
-    );
-    if (!utrCheck.empty) {
-      // UTR already exists — check if it's not cancelled
-      const existing = utrCheck.docs.map(d => d.data()).filter(o => o.status !== 'Cancelled');
-      if (existing.length > 0) {
-        showError('This UPI Ref. No. has already been used for a previous order. Please check your payment app and enter the correct reference number.');
-        btn.disabled = false;
-        document.getElementById('submit-text').textContent = 'Place Order';
-        document.getElementById('submit-spinner').classList.add('hidden');
-        return;
+    if (utrValue) {
+      const utrCheck = await withTimeout(
+        firebase.firestore().collection('orders').where('utr', '==', utrValue).get(),
+        10000, 'UTR check'
+      );
+      if (!utrCheck.empty) {
+        const existing = utrCheck.docs.map(d => d.data()).filter(o => o.status !== 'Cancelled');
+        if (existing.length > 0) {
+          showError('This UPI Ref. No. has already been used for a previous order. Please check your payment app and enter the correct reference number.');
+          btn.disabled = false;
+          document.getElementById('submit-text').textContent = 'Place Order';
+          document.getElementById('submit-spinner').classList.add('hidden');
+          return;
+        }
       }
     }
 

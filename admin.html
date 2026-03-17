@@ -22,7 +22,8 @@
     .status-badge { display: inline-block; padding: 2px 10px; font-size: 9px; letter-spacing: 0.15em; text-transform: uppercase; font-weight: 600; }
     .status-placed    { background: #1c1917; color: #a8a29e; border: 1px solid #292524; }
     .status-dispatched{ background: #1c1405; color: #fbbf24; border: 1px solid #292524; }
-    .status-delivered { background: #052e16; color: #4ade80; border: 1px solid #14532d; }
+    .status-delivered  { background: #052e16; color: #4ade80; border: 1px solid #14532d; }
+    .status-cancelled  { background: #1c0a0a; color: #f87171; border: 1px solid #7f1d1d; }
     select { background-color: #1c1917; border: 1px solid #292524; color: #e7e5e4; }
     input[type=text], input[type=password], input[type=email] { background-color: #141210; border: 1px solid #1c1917; color: #e7e5e4; }
     input:focus, select:focus { outline: none; border-color: #57534e; }
@@ -90,6 +91,7 @@
           <option value="Order Placed">Order Placed</option>
           <option value="Dispatched">Dispatched</option>
           <option value="Delivered">Delivered</option>
+          <option value="Cancelled">Cancelled</option>
         </select>
         <button onclick="loadOrders()" class="px-6 py-3 border border-stone-800 text-[9px] uppercase tracking-widest text-stone-400 hover:text-white hover:border-stone-600 transition-all">
           Refresh
@@ -216,7 +218,7 @@
 
     function updateStats() {
       document.getElementById('stat-total').textContent     = allOrders.length;
-      document.getElementById('stat-pending').textContent   = allOrders.filter(o => o.status !== 'Delivered').length;
+      document.getElementById('stat-pending').textContent   = allOrders.filter(o => o.status !== 'Delivered' && o.status !== 'Cancelled').length;
       document.getElementById('stat-delivered').textContent = allOrders.filter(o => o.status === 'Delivered').length;
     }
 
@@ -246,7 +248,7 @@
             <td class="py-4 pr-6">
               <div class="text-stone-300">${o.product}</div>
               <div class="text-stone-600 text-xs">Qty: ${o.quantity}</div>
-              ${o.utr ? `<div class="text-stone-700 text-[10px] font-mono mt-0.5">Ref: ${o.utr}</div>` : `<div class="text-red-900 text-[10px] mt-0.5">No Ref. No.</div>`}
+              ${o.utr ? `<div class="text-stone-700 text-[10px] font-mono mt-0.5">Ref: ${o.utr}</div>` : o.status === 'Cancelled' ? '' : `<div class="text-yellow-700 text-[10px] mt-0.5 font-semibold">⚠ No UTR — verify payment</div>`}
             </td>
             <td class="py-4 pr-6 text-stone-400 text-xs">${o.quantity}</td>
             <td class="py-4 pr-6">${badge}</td>
@@ -257,6 +259,7 @@
                   <option value="Order Placed"  ${o.status==='Order Placed'  ?'selected':''}>Order Placed</option>
                   <option value="Dispatched"    ${o.status==='Dispatched'    ?'selected':''}>Dispatched</option>
                   <option value="Delivered"     ${o.status==='Delivered'     ?'selected':''}>Delivered</option>
+                  <option value="Cancelled"     ${o.status==='Cancelled'     ?'selected':''}>Cancelled</option>
                 </select>
                 <button onclick="showDetail('${o.orderId || o.id}')"
                   class="px-3 py-1 border border-stone-800 text-[9px] uppercase tracking-widest text-stone-500 hover:text-white hover:border-stone-600 transition-all whitespace-nowrap">
@@ -273,7 +276,10 @@
     }
 
     function statusBadge(status) {
-      const cls = status === 'Delivered' ? 'status-delivered' : status === 'Dispatched' ? 'status-dispatched' : 'status-placed';
+      const cls = status === 'Delivered' ? 'status-delivered'
+                : status === 'Dispatched' ? 'status-dispatched'
+                : status === 'Cancelled' ? 'status-cancelled'
+                : 'status-placed';
       return `<span class="status-badge ${cls}">${status}</span>`;
     }
 
@@ -292,17 +298,27 @@
 
     // ── CANCEL ORDER ─────────────────────────────────────────
     async function cancelOrder(orderId, customerName) {
-      if (!confirm(`Cancel and delete order from ${customerName}?\nThis cannot be undone.`)) return;
+      if (!confirm(`Cancel order from ${customerName}?\nThe order will be marked as Cancelled and the customer will be notified.`)) return;
       try {
-        // Grab order data before deleting so we can email the customer
         const order = allOrders.find(o => (o.orderId || o.id) === orderId);
+        const cancelledOn = new Date().toLocaleDateString('en-IN', {day:'2-digit', month:'short', year:'numeric'});
 
-        await db.collection('orders').doc(orderId).delete();
-        allOrders = allOrders.filter(o => (o.orderId || o.id) !== orderId);
+        // Mark as Cancelled — keeps record for complaints, no delete
+        await db.collection('orders').doc(orderId).update({
+          status: 'Cancelled',
+          cancelledOn,
+        });
+
+        // Update local state
+        const idx = allOrders.findIndex(o => (o.orderId || o.id) === orderId);
+        if (idx !== -1) {
+          allOrders[idx].status = 'Cancelled';
+          allOrders[idx].cancelledOn = cancelledOn;
+        }
         updateStats();
         filterOrders();
 
-        // Send cancellation email to customer in background
+        // Send cancellation email to customer
         if (order && order.email) {
           emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_CANCEL_TEMPLATE_ID, {
             to_email:      order.email,
@@ -310,12 +326,12 @@
             order_id:      orderId,
             product:       order.product,
             quantity:      order.quantity,
-            cancelled_on:  new Date().toLocaleDateString('en-IN', {day:'2-digit', month:'short', year:'numeric'}),
+            cancelled_on:  cancelledOn,
             admin_email:   ADMIN_EMAIL,
           }).catch(err => console.warn('Cancel email failed:', err));
         }
       } catch(e) {
-        alert('Failed to delete order. Please try again.');
+        alert('Failed to cancel order. Please try again.');
         console.error(e);
       }
     }
@@ -363,7 +379,12 @@
             <div><p class="text-stone-600 text-xs mb-1">Product</p>${o.product}</div>
             <div><p class="text-stone-600 text-xs mb-1">Quantity</p>${o.quantity}</div>
           </div>
-          ${o.utr ? `<div class="mt-4 p-3 border border-stone-800 bg-stone-950"><p class="text-[9px] uppercase tracking-widest text-stone-600 mb-1">UPI Ref. No.</p><p class="text-white font-mono text-sm">${o.utr}</p></div>` : '<div class="mt-4 p-3 border border-red-900/40 bg-red-950/20"><p class="text-[9px] uppercase tracking-widest text-red-700 mb-1">UPI Ref. No. Missing</p><p class="text-red-600 text-xs">No UPI Ref. No. provided — verify payment manually.</p></div>'}
+          ${o.utr
+            ? `<div class="mt-4 p-3 border border-stone-800 bg-stone-950"><p class="text-[9px] uppercase tracking-widest text-stone-600 mb-1">UPI Ref. No.</p><p class="text-white font-mono text-sm">${o.utr}</p></div>`
+            : o.status === 'Cancelled'
+              ? ''
+              : `<div class="mt-4 p-3 border border-yellow-900/60 bg-yellow-950/20"><p class="text-[9px] uppercase tracking-widest text-yellow-600 mb-1">⚠ UPI Ref. No. Not Provided</p><p class="text-yellow-700 text-xs">Customer did not enter a UTR. Manually verify payment in your UPI app before dispatching this order.</p></div>`
+          }
           ${o.notes ? `<div class="mt-4"><p class="text-stone-600 text-xs mb-1">Notes</p><p class="text-stone-300">${o.notes}</p></div>` : ''}
         </div>
         <div class="border-t border-stone-900 pt-6">
@@ -387,7 +408,7 @@
           <p class="text-[9px] uppercase tracking-widest text-stone-600 mb-3">Danger Zone</p>
           <button onclick="cancelOrder('${o.orderId||o.id}','${o.name}');closeDetail();"
             class="px-4 py-2 border border-red-900 text-[9px] uppercase tracking-widest text-red-600 hover:text-red-400 hover:border-red-600 transition-all">
-            Cancel &amp; Delete This Order
+            Cancel This Order
           </button>
         </div>`;
       document.getElementById('detail-modal').style.display = 'flex';
