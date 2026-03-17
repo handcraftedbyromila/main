@@ -231,27 +231,43 @@ function injectOrderModal() {
   uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('border-stone-400'));
   uploadArea.addEventListener('drop', e => { e.preventDefault(); uploadArea.classList.remove('border-stone-400'); handleFile(e.dataTransfer.files[0]); });
   fileInput.addEventListener('change', () => handleFile(fileInput.files[0]));
+
+  // Re-generate QR whenever quantity changes
+  document.getElementById('field-qty').addEventListener('change', updateUpiQR);
 }
 
 // ── MODAL OPEN/CLOSE ─────────────────────────────────────────
 let currentProduct = { title: '', price: '' };
 
+function updateUpiQR() {
+  const title    = currentProduct.title;
+  const baseAmt  = currentProduct.price.replace(/[^\d]/g, ''); // "Rs. 359" → "359"
+  const qty      = parseInt(document.getElementById('field-qty').value) || 1;
+  const total    = parseInt(baseAmt) * qty;
+
+  // Update price display
+  const priceEl = document.getElementById('modal-price');
+  if (qty > 1) {
+    priceEl.textContent = `Rs. ${total} (${qty} × Rs. ${baseAmt})`;
+  } else {
+    priceEl.textContent = currentProduct.price;
+  }
+
+  // Regenerate QR with updated total
+  const upiDeepLink = `upi://pay?pa=${UPI_ID}&pn=Romila Handcrafted&am=${total}&cu=INR&tn=Order: ${title} x${qty}`;
+  const qrApiUrl    = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(upiDeepLink)}`;
+  document.getElementById('modal-qr-img').src    = qrApiUrl;
+  document.getElementById('modal-upi-link').href = upiDeepLink;
+}
+
 function openOrderModal(title, price) {
   currentProduct = { title, price };
   document.getElementById('modal-product-title').textContent = title;
-  document.getElementById('modal-price').textContent         = price;
   document.getElementById('field-product').value             = title;
 
-  // Generate dynamic UPI QR with pre-filled amount
-  const amountNum = price.replace(/[^\d]/g, ''); // strip "Rs. " → "359" (digits only, no dot)
-  // Build the raw UPI deep link (no encoding — QR encodes the raw string itself)
-  const upiDeepLink = `upi://pay?pa=${UPI_ID}&pn=Romila Handcrafted&am=${amountNum}&cu=INR&tn=Order: ${title}`;
-  // Pass the raw link to the QR API — the API handles encoding internally
-  const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(upiDeepLink)}`;
-  document.getElementById('modal-qr-img').src   = qrApiUrl;
-  document.getElementById('modal-upi-link').href = upiDeepLink;
-
   clearForm();
+  updateUpiQR(); // generate QR for qty=1 on open
+
   const modal = document.getElementById('order-modal');
   modal.style.removeProperty('display');
   modal.style.display = 'flex';
@@ -352,6 +368,14 @@ function compressImage(file) {
   });
 }
 
+// ── TIMEOUT HELPER ───────────────────────────────────────────
+function withTimeout(promise, ms, label) {
+  const timeout = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error(`Timeout: ${label} took over ${ms/1000}s`)), ms)
+  );
+  return Promise.race([promise, timeout]);
+}
+
 // ── SUBMIT ORDER ─────────────────────────────────────────────
 async function submitOrder() {
   if (!validateForm()) return;
@@ -359,29 +383,26 @@ async function submitOrder() {
   const btn = document.getElementById('submit-order');
   btn.disabled = true;
   document.getElementById('submit-spinner').classList.remove('hidden');
-
-  // Animated step labels so user knows something is happening
-  const steps = ['Compressing image…', 'Uploading screenshot…', 'Saving order…', 'Almost done…'];
-  let stepIdx = 0;
-  document.getElementById('submit-text').textContent = steps[0];
-  const stepTimer = setInterval(() => {
-    stepIdx = Math.min(stepIdx + 1, steps.length - 1);
-    document.getElementById('submit-text').textContent = steps[stepIdx];
-  }, 2500);
+  document.getElementById('submit-text').textContent = 'Compressing image…';
 
   try {
     const rawFile = document.getElementById('field-screenshot').files[0];
     const orderId = 'RM' + Date.now();
 
     // 1. Compress image (4MB photo → ~150KB)
-    const compressed = await compressImage(rawFile);
+    const compressed = await withTimeout(compressImage(rawFile), 10000, 'compression');
 
     // 2. Upload to Firebase Storage
+    document.getElementById('submit-text').textContent = 'Uploading screenshot…';
     const storageRef    = firebase.storage().ref(`screenshots/${orderId}.jpg`);
-    const uploadTask    = await storageRef.put(compressed, { contentType: 'image/jpeg' });
+    const uploadTask    = await withTimeout(
+      storageRef.put(compressed, { contentType: 'image/jpeg' }),
+      30000, 'storage upload'
+    );
     const screenshotUrl = await uploadTask.ref.getDownloadURL();
 
     // 3. Collect order data
+    document.getElementById('submit-text').textContent = 'Saving order…';
     const orderData = {
       orderId,
       name:     document.getElementById('field-name').value.trim(),
@@ -398,25 +419,13 @@ async function submitOrder() {
       createdAt: firebase.firestore.FieldValue.serverTimestamp(),
     };
 
-    // 4. Save to Firestore AND send email simultaneously
-    await Promise.all([
+    // 4. Save to Firestore — this MUST succeed
+    await withTimeout(
       firebase.firestore().collection('orders').doc(orderId).set(orderData),
-      emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
-        to_email:       ADMIN_EMAIL,
-        order_id:       orderId,
-        customer_name:  orderData.name,
-        customer_phone: orderData.phone,
-        customer_email: orderData.email,
-        address:        `${orderData.address}, ${orderData.city} - ${orderData.pincode}`,
-        product:        orderData.product,
-        quantity:       orderData.quantity,
-        notes:          orderData.notes || 'None',
-        screenshot_url: screenshotUrl,
-      })
-    ]);
+      15000, 'Firestore save'
+    );
 
-    // 5. Show success
-    clearInterval(stepTimer);
+    // 5. Show success immediately — don't make user wait for email
     closeOrderModal();
     document.getElementById('success-order-id').textContent = `Order ID: ${orderId}`;
     document.getElementById('success-track-link').href = `track.html?email=${encodeURIComponent(orderData.email)}`;
@@ -425,10 +434,32 @@ async function submitOrder() {
     successModal.style.display = 'flex';
     document.body.style.overflow = 'hidden';
 
+    // 6. Send email in background — failure won't affect the customer
+    emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
+      to_email:       ADMIN_EMAIL,
+      order_id:       orderId,
+      customer_name:  orderData.name,
+      customer_phone: orderData.phone,
+      customer_email: orderData.email,
+      address:        `${orderData.address}, ${orderData.city} - ${orderData.pincode}`,
+      product:        orderData.product,
+      quantity:       orderData.quantity,
+      notes:          orderData.notes || 'None',
+      screenshot_url: screenshotUrl,
+    }).catch(err => console.warn('Email send failed (order still saved):', err));
+
   } catch (err) {
-    clearInterval(stepTimer);
-    console.error(err);
-    showError('Something went wrong. Please try again or contact us on WhatsApp.');
+    console.error('Order submission error:', err.message);
+    // Give a specific hint if we can detect what failed
+    let msg = 'Something went wrong. Please try again.';
+    if (err.message.includes('storage') || err.message.includes('upload')) {
+      msg = 'Screenshot upload failed. Check your internet and try again.';
+    } else if (err.message.includes('Firestore') || err.message.includes('save')) {
+      msg = 'Could not save order. Check your internet and try again.';
+    } else if (err.message.includes('Timeout')) {
+      msg = err.message + ' — Please check your internet connection and try again.';
+    }
+    showError(msg);
     btn.disabled = false;
     document.getElementById('submit-text').textContent = 'Place Order';
     document.getElementById('submit-spinner').classList.add('hidden');
