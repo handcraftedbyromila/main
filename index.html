@@ -229,7 +229,7 @@
                 <div class="p-12 border border-stone-900 bg-stone-950 transition-colors hover:border-stone-700">
                     <span class="text-[10px] uppercase tracking-widest text-stone-600 mb-6 block">Online Storefronts</span>
                     <a href="https://www.meesho.com/handcraftedbyromila?_ms=3.0.3" class="text-2xl font-serif italic text-white hover:text-stone-400 transition-colors block mb-2 underline underline-offset-8 decoration-stone-800">Meesho Shop</a>
-                    <a href="mailto:handcraftedbyromila@gmail.com" class="text-2xl font-serif italic text-white hover:text-stone-400 transition-colors block mb-2 underline underline-offset-8 decoration-stone-800">Email Studio</a>
+                    <a href="/cdn-cgi/l/email-protection#ec848d82888f9e8d8a9889888e959e838185808dac8b818d8580c28f8381" class="text-2xl font-serif italic text-white hover:text-stone-400 transition-colors block mb-2 underline underline-offset-8 decoration-stone-800">Email Studio</a>
                 </div>
             </div>
         </div>
@@ -273,7 +273,7 @@
         </div>
     </footer>
 
-    <script>
+    <script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
         const products = [
             { id: 1, title: "The Celeste Bloom", price: "Rs. 499", series: "The Cerulean Heirloom", images: ["3. Celeste Bloom(1).jpeg", "3. Celeste Bloom(2).jpeg", "3. Celeste Bloom(3).jpeg", "3. Celeste Bloom(4).jpeg"], desc: "Hand-painted enamel work featuring traditional Indian motifs, suspended on a fine gold plated link chain. Each piece is slightly unique due to the brushwork." },
             { id: 2, title: "The Verdant Grace", price: "Rs. 359", series: "The Cerulean Heirloom", images: ["4. Verdant Grace(1).jpeg", "4. Verdant Grace(2).jpeg", "4. Verdant Grace(3).jpeg"], desc: "Deep forest hues captured in hand-cut glass droplets. These pieces catch the light with every movement, creating a subtle dance of reflections." },
@@ -289,6 +289,17 @@
             { name: "The Cerulean Heirloom", label: "Series 01", subtitle: "Artisan Beadwork" },
             { name: "The Atelier Edit", label: "Series 02", subtitle: "Kundan & Pearls" }
         ];
+
+        const productUrls = {
+            1: "product-celeste-bloom.html",
+            2: "product-verdant-grace.html",
+            3: "product-cerulean-drop.html",
+            4: "product-regal-prism.html",
+            5: "product-rose-pearl-strand.html",
+            6: "product-crimson-heritage.html",
+            7: "product-noor-jhumka.html",
+            8: "product-pearl-cascade.html"
+        };
 
         let currentImageIndex = 0;
         let currentImages = [];
@@ -315,7 +326,7 @@
                         </div>
                         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-12">
                             ${seriesProducts.map((p) => `
-                                <div class="product-card group cursor-pointer" onclick="openDetail(${p.id})">
+                                <div class="product-card group cursor-pointer" onclick="window.location.href=productUrls[${p.id}]">
                                     <div class="aspect-[4/5] overflow-hidden bg-stone-900 relative">
                                         <img src="${p.images[0]}" class="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-110 brightness-90 group-hover:brightness-100">
                                         <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
@@ -467,7 +478,7 @@
             }
         });
 
-        document.addEventListener("DOMContentLoaded", () => {
+        document.addEventListener('DOMContentLoaded', () => {
             renderProducts();
             initializeCarousel();
         });
