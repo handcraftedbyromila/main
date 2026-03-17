@@ -20,9 +20,9 @@ if (!firebase.apps.length) {
   firebase.initializeApp(FIREBASE_CONFIG);
 }
 
-const EMAILJS_SERVICE_ID  = "service_i2mew9k";
-const EMAILJS_TEMPLATE_ID = "template_fodqow5";
-const EMAILJS_PUBLIC_KEY  = "kjNZ-iu9CQF68Z_Vg";
+const EMAILJS_SERVICE_ID          = "service_i2mew9k";
+const EMAILJS_TEMPLATE_ID          = "template_confirm";  // customer order confirmation
+const EMAILJS_PUBLIC_KEY          = "kjNZ-iu9CQF68Z_Vg";
 emailjs.init(EMAILJS_PUBLIC_KEY);
 
 // ── BUSINESS CONFIG ──────────────────────────────────────────
@@ -198,8 +198,13 @@ function injectOrderModal() {
       </div>
       <span class="text-[9px] uppercase tracking-[0.5em] text-stone-600 mb-4 block">Order Confirmed</span>
       <h3 class="text-3xl font-serif italic text-white mb-4">Thank You!</h3>
-      <p class="text-stone-400 text-sm font-light leading-relaxed mb-4">Your order has been placed successfully. You'll receive a confirmation email shortly.</p>
-      <div id="success-order-id" class="text-stone-600 text-[10px] uppercase tracking-widest mb-8"></div>
+      <p class="text-stone-400 text-sm font-light leading-relaxed mb-2">Your order has been placed successfully. A confirmation email has been sent to you.</p>
+      <div id="success-order-id" class="text-stone-600 text-[10px] uppercase tracking-widest mb-4"></div>
+      <div class="border border-stone-800 bg-stone-950/60 px-4 py-3 mb-6 text-left">
+        <p class="text-stone-500 text-[10px] leading-relaxed">
+          📦 Please keep tracking your order for the latest status updates — we'll move it to <span class="text-stone-300">Dispatched</span> once shipped and <span class="text-stone-300">Delivered</span> once it arrives.
+        </p>
+      </div>
 
       <!-- Progress Bar -->
       <div class="mb-8">
@@ -376,19 +381,21 @@ async function submitOrder() {
     successModal.style.display = 'flex';
     document.body.style.overflow = 'hidden';
 
-    // 5. Send email in background
+    // 5. Send emails in background — admin notification + customer confirmation
+    const trackUrl = `${window.location.origin}/track.html?email=${encodeURIComponent(orderData.email)}`;
+
+    // Customer confirmation email
     emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
-      to_email:       ADMIN_EMAIL,
-      order_id:       orderId,
-      customer_name:  orderData.name,
-      customer_phone: orderData.phone,
-      customer_email: orderData.email,
-      address:        `${orderData.address}, ${orderData.city} - ${orderData.pincode}`,
-      product:        orderData.product,
-      quantity:       orderData.quantity,
-      notes:          orderData.notes || 'None',
-      utr:            orderData.utr,
-    }).catch(err => console.warn('Email send failed (order still saved):', err));
+      to_email:      orderData.email,
+      customer_name: orderData.name,
+      order_id:      orderId,
+      product:       orderData.product,
+      quantity:      orderData.quantity,
+      address:       `${orderData.address}, ${orderData.city} - ${orderData.pincode}`,
+      utr:           orderData.utr,
+      track_url:     trackUrl,
+      admin_email:   ADMIN_EMAIL,
+    }).catch(err => console.warn('Customer email failed:', err));
 
   } catch (err) {
     console.error('Order submission error:', err.message);

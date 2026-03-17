@@ -12,6 +12,8 @@
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+  <!-- EmailJS -->
+  <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
 
   <style>
     :root { --bg: #0c0a09; --surface: #141210; --border: #1c1917; --accent: #e7e5e4; }
@@ -148,6 +150,13 @@
 
     firebase.initializeApp(FIREBASE_CONFIG);
     const db   = firebase.firestore();
+
+    // EmailJS — same keys as order-system.js
+    const EMAILJS_SERVICE_ID         = "service_i2mew9k";
+    const EMAILJS_CANCEL_TEMPLATE_ID = "template_cancel";   // customer cancellation email
+    const EMAILJS_PUBLIC_KEY         = "kjNZ-iu9CQF68Z_Vg";
+    const ADMIN_EMAIL                = "handcraftedbyromila@gmail.com";
+    emailjs.init(EMAILJS_PUBLIC_KEY);
     const auth = firebase.auth();
 
     let allOrders = [];
@@ -285,10 +294,26 @@
     async function cancelOrder(orderId, customerName) {
       if (!confirm(`Cancel and delete order from ${customerName}?\nThis cannot be undone.`)) return;
       try {
+        // Grab order data before deleting so we can email the customer
+        const order = allOrders.find(o => (o.orderId || o.id) === orderId);
+
         await db.collection('orders').doc(orderId).delete();
         allOrders = allOrders.filter(o => (o.orderId || o.id) !== orderId);
         updateStats();
         filterOrders();
+
+        // Send cancellation email to customer in background
+        if (order && order.email) {
+          emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_CANCEL_TEMPLATE_ID, {
+            to_email:      order.email,
+            customer_name: order.name,
+            order_id:      orderId,
+            product:       order.product,
+            quantity:      order.quantity,
+            cancelled_on:  new Date().toLocaleDateString('en-IN', {day:'2-digit', month:'short', year:'numeric'}),
+            admin_email:   ADMIN_EMAIL,
+          }).catch(err => console.warn('Cancel email failed:', err));
+        }
       } catch(e) {
         alert('Failed to delete order. Please try again.');
         console.error(e);
