@@ -152,6 +152,25 @@ function injectOrderModal() {
                 class="w-full bg-stone-900 border border-stone-800 text-stone-200 text-sm px-4 py-3 placeholder-stone-600 focus:outline-none focus:border-stone-500 transition-colors resize-none"></textarea>
             </div>
 
+            <!-- UTR Number -->
+            <div>
+              <label class="text-[9px] uppercase tracking-widest text-stone-500 mb-2 block">
+                UPI Ref. No. *
+              </label>
+              <input id="field-utr" type="text" placeholder="e.g. 426811234567"
+                class="w-full bg-stone-900 border border-stone-800 text-stone-200 text-sm px-4 py-3 placeholder-stone-600 focus:outline-none focus:border-stone-500 transition-colors font-mono">
+              <p class="text-stone-700 text-[10px] mt-1.5 leading-relaxed">Found in GPay as <span class="text-stone-500">UPI Ref. No.</span>, in PhonePe as <span class="text-stone-500">Reference ID</span>, in Paytm as <span class="text-stone-500">Transaction ID</span> — shown on the payment success screen.</p>
+            </div>
+
+            <!-- Help Guideline -->
+            <div class="border border-stone-800 bg-stone-950/60 px-5 py-4 rounded-sm">
+              <p class="text-stone-500 text-[10px] leading-relaxed">
+                Having trouble? Email us at
+                <a href="mailto:${ADMIN_EMAIL}" class="text-stone-300 hover:text-white transition-colors underline underline-offset-2">${ADMIN_EMAIL}</a>
+                with your order details and we'll sort it out promptly.
+              </p>
+            </div>
+
             <!-- Error Message -->
             <div id="form-error" class="hidden text-red-400 text-xs border border-red-900 bg-red-950/30 px-4 py-3"></div>
 
@@ -291,6 +310,11 @@ function validateForm() {
   if (!address)                           { showError('Please enter your shipping address.'); return false; }
   if (!city)                              { showError('Please enter your city.'); return false; }
   if (!/^\d{6}$/.test(pincode))          { showError('Please enter a valid 6-digit pincode.'); return false; }
+
+  const utr = document.getElementById('field-utr').value.trim();
+  if (!utr)          { showError('Please enter your UPI Ref. No. from the payment success screen.'); return false; }
+  if (utr.length < 6){ showError('UPI Ref. No. seems too short. Please check and re-enter.'); return false; }
+
   // Basic spam check
   if (name.length > 100 || address.length > 500) { showError('Input too long. Please check your details.'); return false; }
 
@@ -332,6 +356,7 @@ async function submitOrder() {
       product:  document.getElementById('field-product').value,
       quantity: parseInt(document.getElementById('field-qty').value),
       notes:    document.getElementById('field-notes').value.trim(),
+      utr:      document.getElementById('field-utr').value.trim(),
       status:   'Order Placed',
       createdAt: firebase.firestore.FieldValue.serverTimestamp(),
     };
@@ -362,6 +387,7 @@ async function submitOrder() {
       product:        orderData.product,
       quantity:       orderData.quantity,
       notes:          orderData.notes || 'None',
+      utr:            orderData.utr,
     }).catch(err => console.warn('Email send failed (order still saved):', err));
 
   } catch (err) {
@@ -381,7 +407,7 @@ async function submitOrder() {
 
 // ── HELPERS ──────────────────────────────────────────────────
 function clearForm() {
-  ['field-name','field-phone','field-email','field-address','field-city','field-pincode','field-notes'].forEach(id => {
+  ['field-name','field-phone','field-email','field-address','field-city','field-pincode','field-notes','field-utr'].forEach(id => {
     document.getElementById(id).value = '';
   });
   document.getElementById('field-qty').value = '1';

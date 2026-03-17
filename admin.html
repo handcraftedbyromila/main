@@ -141,7 +141,7 @@
   apiKey:            "AIzaSyBquB0qLjBU9tkmpFqs8l5C3X93gS3Q2vQ",
   authDomain:        "romila-shop.firebaseapp.com",
   projectId:         "romila-shop",
-  storageBucket:     "romila-shop.firebasestorage.app",
+  storageBucket:     "romila-shop.appspot.com",
   messagingSenderId: "251855825998",
   appId:             "1:251855825998:web:9974a35f179fd5324d271f"
 };
@@ -237,6 +237,7 @@
             <td class="py-4 pr-6">
               <div class="text-stone-300">${o.product}</div>
               <div class="text-stone-600 text-xs">Qty: ${o.quantity}</div>
+              ${o.utr ? `<div class="text-stone-700 text-[10px] font-mono mt-0.5">Ref: ${o.utr}</div>` : `<div class="text-red-900 text-[10px] mt-0.5">No Ref. No.</div>`}
             </td>
             <td class="py-4 pr-6 text-stone-400 text-xs">${o.quantity}</td>
             <td class="py-4 pr-6">${badge}</td>
@@ -251,6 +252,10 @@
                 <button onclick="showDetail('${o.orderId || o.id}')"
                   class="px-3 py-1 border border-stone-800 text-[9px] uppercase tracking-widest text-stone-500 hover:text-white hover:border-stone-600 transition-all whitespace-nowrap">
                   View
+                </button>
+                <button onclick="cancelOrder('${o.orderId || o.id}', '${o.name}')"
+                  class="px-3 py-1 border border-red-900 text-[9px] uppercase tracking-widest text-red-700 hover:text-red-400 hover:border-red-700 transition-all whitespace-nowrap">
+                  Cancel
                 </button>
               </div>
             </td>
@@ -272,6 +277,20 @@
         updateStats();
       } catch(e) {
         alert('Failed to update status. Please try again.');
+        console.error(e);
+      }
+    }
+
+    // ── CANCEL ORDER ─────────────────────────────────────────
+    async function cancelOrder(orderId, customerName) {
+      if (!confirm(`Cancel and delete order from ${customerName}?\nThis cannot be undone.`)) return;
+      try {
+        await db.collection('orders').doc(orderId).delete();
+        allOrders = allOrders.filter(o => (o.orderId || o.id) !== orderId);
+        updateStats();
+        filterOrders();
+      } catch(e) {
+        alert('Failed to delete order. Please try again.');
         console.error(e);
       }
     }
@@ -319,6 +338,7 @@
             <div><p class="text-stone-600 text-xs mb-1">Product</p>${o.product}</div>
             <div><p class="text-stone-600 text-xs mb-1">Quantity</p>${o.quantity}</div>
           </div>
+          ${o.utr ? `<div class="mt-4 p-3 border border-stone-800 bg-stone-950"><p class="text-[9px] uppercase tracking-widest text-stone-600 mb-1">UPI Ref. No.</p><p class="text-white font-mono text-sm">${o.utr}</p></div>` : '<div class="mt-4 p-3 border border-red-900/40 bg-red-950/20"><p class="text-[9px] uppercase tracking-widest text-red-700 mb-1">UPI Ref. No. Missing</p><p class="text-red-600 text-xs">No UPI Ref. No. provided — verify payment manually.</p></div>'}
           ${o.notes ? `<div class="mt-4"><p class="text-stone-600 text-xs mb-1">Notes</p><p class="text-stone-300">${o.notes}</p></div>` : ''}
         </div>
         <div class="border-t border-stone-900 pt-6">
@@ -330,13 +350,20 @@
         </div>
         <div class="border-t border-stone-900 pt-6">
           <p class="text-[9px] uppercase tracking-widest text-stone-600 mb-3">Update Status</p>
-          <div class="flex gap-3">
+          <div class="flex gap-3 flex-wrap">
             ${['Order Placed','Dispatched','Delivered'].map(s => `
               <button onclick="updateStatus('${o.orderId||o.id}','${s}');closeDetail();loadOrders();"
                 class="px-4 py-2 text-[9px] uppercase tracking-widest transition-all ${o.status===s ? 'bg-white text-black' : 'border border-stone-800 text-stone-400 hover:text-white hover:border-stone-600'}">
                 ${s}
               </button>`).join('')}
           </div>
+        </div>
+        <div class="border-t border-stone-900 pt-6">
+          <p class="text-[9px] uppercase tracking-widest text-stone-600 mb-3">Danger Zone</p>
+          <button onclick="cancelOrder('${o.orderId||o.id}','${o.name}');closeDetail();"
+            class="px-4 py-2 border border-red-900 text-[9px] uppercase tracking-widest text-red-600 hover:text-red-400 hover:border-red-600 transition-all">
+            Cancel &amp; Delete This Order
+          </button>
         </div>`;
       document.getElementById('detail-modal').style.display = 'flex';
     }
