@@ -394,14 +394,14 @@ async function submitOrder() {
     // 4. Show success immediately
     closeOrderModal();
     document.getElementById('success-order-id').textContent = `Order ID: ${orderId}`;
-    document.getElementById('success-track-link').href = `track.html?email=${encodeURIComponent(orderData.email)}`;
+    document.getElementById('success-track-link').href = `track.html?email=${encodeURIComponent(orderData.email)}&orderid=${encodeURIComponent(orderId)}`;
     const successModal = document.getElementById('success-modal');
     successModal.style.removeProperty('display');
     successModal.style.display = 'flex';
     document.body.style.overflow = 'hidden';
 
     // 5. Send emails in background — admin notification + customer confirmation
-    const trackUrl = `${window.location.origin}/track.html?email=${encodeURIComponent(orderData.email)}`;
+    const trackUrl = `${window.location.origin}/track.html?email=${encodeURIComponent(orderData.email)}&orderid=${encodeURIComponent(orderId)}`;
 
     // Customer confirmation email
     emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
