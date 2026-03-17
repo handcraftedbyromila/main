@@ -143,23 +143,7 @@ function injectOrderModal() {
               </select>
             </div>
 
-            <!-- Payment Screenshot -->
-            <div>
-              <label class="text-[9px] uppercase tracking-widest text-stone-500 mb-2 block">Payment Screenshot *</label>
-              <div id="upload-area" class="border border-dashed border-stone-700 bg-stone-900 p-6 text-center cursor-pointer hover:border-stone-500 transition-colors">
-                <input id="field-screenshot" type="file" accept="image/*" class="hidden">
-                <div id="upload-placeholder">
-                  <svg class="mx-auto mb-3 text-stone-600" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
-                  <p class="text-stone-500 text-xs">Click to upload or drag & drop</p>
-                  <p class="text-stone-700 text-[10px] mt-1">PNG, JPG up to 5MB</p>
-                </div>
-                <div id="upload-preview" class="hidden">
-                  <img id="preview-img" class="max-h-32 mx-auto mb-2 border border-stone-700">
-                  <p id="preview-name" class="text-stone-400 text-xs"></p>
-                  <button type="button" onclick="clearUpload()" class="text-stone-600 text-[10px] uppercase tracking-wider hover:text-white mt-2 transition-colors">Remove</button>
-                </div>
-              </div>
-            </div>
+
 
             <!-- Notes -->
             <div>
@@ -224,14 +208,6 @@ function injectOrderModal() {
   document.getElementById('order-backdrop').addEventListener('click', closeOrderModal);
   document.getElementById('modal-close').addEventListener('click', closeOrderModal);
 
-  const uploadArea = document.getElementById('upload-area');
-  const fileInput  = document.getElementById('field-screenshot');
-  uploadArea.addEventListener('click', () => fileInput.click());
-  uploadArea.addEventListener('dragover', e => { e.preventDefault(); uploadArea.classList.add('border-stone-400'); });
-  uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('border-stone-400'));
-  uploadArea.addEventListener('drop', e => { e.preventDefault(); uploadArea.classList.remove('border-stone-400'); handleFile(e.dataTransfer.files[0]); });
-  fileInput.addEventListener('change', () => handleFile(fileInput.files[0]));
-
   // Re-generate QR whenever quantity changes
   document.getElementById('field-qty').addEventListener('change', updateUpiQR);
 }
@@ -284,26 +260,6 @@ function closeSuccess() {
   document.body.style.overflow = '';
 }
 
-// ── FILE UPLOAD PREVIEW ──────────────────────────────────────
-function handleFile(file) {
-  if (!file) return;
-  if (file.size > 5 * 1024 * 1024) { showError('Screenshot must be under 5MB.'); return; }
-  const reader = new FileReader();
-  reader.onload = e => {
-    document.getElementById('preview-img').src    = e.target.result;
-    document.getElementById('preview-name').textContent = file.name;
-    document.getElementById('upload-placeholder').classList.add('hidden');
-    document.getElementById('upload-preview').classList.remove('hidden');
-  };
-  reader.readAsDataURL(file);
-}
-
-function clearUpload() {
-  document.getElementById('field-screenshot').value = '';
-  document.getElementById('upload-placeholder').classList.remove('hidden');
-  document.getElementById('upload-preview').classList.add('hidden');
-}
-
 // ── COPY UPI ─────────────────────────────────────────────────
 function copyModalUPI() {
   navigator.clipboard.writeText(UPI_ID).then(() => {
@@ -329,16 +285,12 @@ function validateForm() {
   const address    = document.getElementById('field-address').value.trim();
   const city       = document.getElementById('field-city').value.trim();
   const pincode    = document.getElementById('field-pincode').value.trim();
-  const screenshot = document.getElementById('field-screenshot').files[0];
-
   if (!name)                              { showError('Please enter your full name.'); return false; }
   if (!/^[6-9]\d{9}$/.test(phone))       { showError('Please enter a valid 10-digit Indian phone number.'); return false; }
   if (!/\S+@\S+\.\S+/.test(email))       { showError('Please enter a valid email address.'); return false; }
   if (!address)                           { showError('Please enter your shipping address.'); return false; }
   if (!city)                              { showError('Please enter your city.'); return false; }
   if (!/^\d{6}$/.test(pincode))          { showError('Please enter a valid 6-digit pincode.'); return false; }
-  if (!screenshot)                        { showError('Please upload your payment screenshot.'); return false; }
-
   // Basic spam check
   if (name.length > 100 || address.length > 500) { showError('Input too long. Please check your details.'); return false; }
 
@@ -346,27 +298,6 @@ function validateForm() {
   return true;
 }
 
-// ── IMAGE COMPRESS ───────────────────────────────────────────
-// Shrinks screenshot to max 800px / ~150KB before uploading
-function compressImage(file) {
-  return new Promise((resolve) => {
-    const MAX_W = 800, QUALITY = 0.7;
-    const reader = new FileReader();
-    reader.onload = e => {
-      const img = new Image();
-      img.onload = () => {
-        const scale  = Math.min(1, MAX_W / img.width);
-        const canvas = document.createElement('canvas');
-        canvas.width  = img.width  * scale;
-        canvas.height = img.height * scale;
-        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
-        canvas.toBlob(blob => resolve(blob || file), 'image/jpeg', QUALITY);
-      };
-      img.src = e.target.result;
-    };
-    reader.readAsDataURL(file);
-  });
-}
 
 // ── TIMEOUT HELPER ───────────────────────────────────────────
 function withTimeout(promise, ms, label) {
@@ -383,25 +314,12 @@ async function submitOrder() {
   const btn = document.getElementById('submit-order');
   btn.disabled = true;
   document.getElementById('submit-spinner').classList.remove('hidden');
-  document.getElementById('submit-text').textContent = 'Compressing image…';
+  document.getElementById('submit-text').textContent = 'Placing Order…';
 
   try {
-    const rawFile = document.getElementById('field-screenshot').files[0];
     const orderId = 'RM' + Date.now();
 
-    // 1. Compress image (4MB photo → ~150KB)
-    const compressed = await withTimeout(compressImage(rawFile), 10000, 'compression');
-
-    // 2. Upload to Firebase Storage
-    document.getElementById('submit-text').textContent = 'Uploading screenshot…';
-    const storageRef    = firebase.storage().ref(`screenshots/${orderId}.jpg`);
-    const uploadTask    = await withTimeout(
-      storageRef.put(compressed, { contentType: 'image/jpeg' }),
-      30000, 'storage upload'
-    );
-    const screenshotUrl = await uploadTask.ref.getDownloadURL();
-
-    // 3. Collect order data
+    // 1. Collect order data
     document.getElementById('submit-text').textContent = 'Saving order…';
     const orderData = {
       orderId,
@@ -414,18 +332,17 @@ async function submitOrder() {
       product:  document.getElementById('field-product').value,
       quantity: parseInt(document.getElementById('field-qty').value),
       notes:    document.getElementById('field-notes').value.trim(),
-      screenshotUrl,
       status:   'Order Placed',
       createdAt: firebase.firestore.FieldValue.serverTimestamp(),
     };
 
-    // 4. Save to Firestore — this MUST succeed
+    // 3. Save to Firestore
     await withTimeout(
       firebase.firestore().collection('orders').doc(orderId).set(orderData),
       15000, 'Firestore save'
     );
 
-    // 5. Show success immediately — don't make user wait for email
+    // 4. Show success immediately
     closeOrderModal();
     document.getElementById('success-order-id').textContent = `Order ID: ${orderId}`;
     document.getElementById('success-track-link').href = `track.html?email=${encodeURIComponent(orderData.email)}`;
@@ -434,7 +351,7 @@ async function submitOrder() {
     successModal.style.display = 'flex';
     document.body.style.overflow = 'hidden';
 
-    // 6. Send email in background — failure won't affect the customer
+    // 5. Send email in background
     emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
       to_email:       ADMIN_EMAIL,
       order_id:       orderId,
@@ -445,19 +362,15 @@ async function submitOrder() {
       product:        orderData.product,
       quantity:       orderData.quantity,
       notes:          orderData.notes || 'None',
-      screenshot_url: screenshotUrl,
     }).catch(err => console.warn('Email send failed (order still saved):', err));
 
   } catch (err) {
     console.error('Order submission error:', err.message);
-    // Give a specific hint if we can detect what failed
     let msg = 'Something went wrong. Please try again.';
-    if (err.message.includes('storage') || err.message.includes('upload')) {
-      msg = 'Screenshot upload failed. Check your internet and try again.';
-    } else if (err.message.includes('Firestore') || err.message.includes('save')) {
+    if (err.message.includes('Firestore') || err.message.includes('save')) {
       msg = 'Could not save order. Check your internet and try again.';
     } else if (err.message.includes('Timeout')) {
-      msg = err.message + ' — Please check your internet connection and try again.';
+      msg = 'Taking too long. Check your internet and try again.';
     }
     showError(msg);
     btn.disabled = false;
@@ -472,7 +385,6 @@ function clearForm() {
     document.getElementById(id).value = '';
   });
   document.getElementById('field-qty').value = '1';
-  clearUpload();
   hideError();
   document.getElementById('submit-order').disabled = false;
   document.getElementById('submit-text').textContent = 'Place Order';
