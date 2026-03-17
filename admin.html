@@ -109,7 +109,7 @@
             <thead>
               <tr class="border-b border-stone-900 text-[9px] uppercase tracking-widest text-stone-600">
                 <th class="text-left py-4 pr-6 font-normal">Order ID</th>
-                <th class="text-left py-4 pr-6 font-normal">Date</th>
+                <th class="text-left py-4 pr-6 font-normal">Date & Time</th>
                 <th class="text-left py-4 pr-6 font-normal">Customer</th>
                 <th class="text-left py-4 pr-6 font-normal">Product</th>
                 <th class="text-left py-4 pr-6 font-normal">Qty</th>
@@ -235,12 +235,17 @@
       document.getElementById('no-orders').classList.add('hidden');
 
       tbody.innerHTML = orders.map(o => {
-        const date   = o.createdAt?.toDate ? o.createdAt.toDate().toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' }) : '—';
+        const dateObj = o.createdAt?.toDate ? o.createdAt.toDate() : null;
+        const date   = dateObj ? dateObj.toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' }) : '—';
+        const time   = dateObj ? dateObj.toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit', hour12:true }) : '';
         const badge  = statusBadge(o.status);
         return `
           <tr class="order-row border-b border-stone-900/50 transition-colors">
             <td class="py-4 pr-6 font-mono text-xs text-stone-500">${o.orderId || o.id}</td>
-            <td class="py-4 pr-6 text-xs text-stone-500">${date}</td>
+            <td class="py-4 pr-6 text-xs text-stone-500">
+              <div>${date}</div>
+              <div class="text-stone-700 text-[10px] mt-0.5">${time}</div>
+            </td>
             <td class="py-4 pr-6">
               <div class="text-stone-200 font-medium">${o.name}</div>
               <div class="text-stone-600 text-xs">${o.phone}</div>
@@ -268,6 +273,10 @@
                 <button onclick="cancelOrder('${o.orderId || o.id}', '${o.name}')"
                   class="px-3 py-1 border border-red-900 text-[9px] uppercase tracking-widest text-red-700 hover:text-red-400 hover:border-red-700 transition-all whitespace-nowrap">
                   Cancel
+                </button>
+                <button onclick="deleteOrder('${o.orderId || o.id}', '${o.name}')"
+                  class="px-3 py-1 border border-stone-900 text-[9px] uppercase tracking-widest text-stone-700 hover:text-red-500 hover:border-red-900 transition-all whitespace-nowrap">
+                  Delete
                 </button>
               </div>
             </td>
@@ -336,6 +345,20 @@
       }
     }
 
+    // ── DELETE ORDER ─────────────────────────────────────────
+    async function deleteOrder(orderId, customerName) {
+      if (!confirm(`Permanently delete order from ${customerName}?\nThis CANNOT be undone and the customer will NOT be notified.`)) return;
+      try {
+        await db.collection('orders').doc(orderId).delete();
+        allOrders = allOrders.filter(o => (o.orderId || o.id) !== orderId);
+        updateStats();
+        filterOrders();
+      } catch(e) {
+        alert('Failed to delete order. Please try again.');
+        console.error(e);
+      }
+    }
+
     // ── FILTER ───────────────────────────────────────────────
     function filterOrders() {
       const q      = document.getElementById('search-input').value.toLowerCase();
@@ -357,11 +380,13 @@
       const o = allOrders.find(o => (o.orderId || o.id) === orderId);
       if (!o) return;
       document.getElementById('detail-order-id').textContent = o.orderId || o.id;
-      const date = o.createdAt?.toDate ? o.createdAt.toDate().toLocaleString('en-IN') : '—';
+      const detailDateObj = o.createdAt?.toDate ? o.createdAt.toDate() : null;
+      const date = detailDateObj ? detailDateObj.toLocaleDateString('en-IN', { day:'2-digit', month:'long', year:'numeric' }) : '—';
+      const time = detailDateObj ? detailDateObj.toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit', hour12:true }) : '';
       document.getElementById('detail-content').innerHTML = `
         <div class="grid grid-cols-2 gap-6">
           <div><p class="text-[9px] uppercase tracking-widest text-stone-600 mb-1">Status</p>${statusBadge(o.status)}</div>
-          <div><p class="text-[9px] uppercase tracking-widest text-stone-600 mb-1">Date</p><p class="text-stone-300">${date}</p></div>
+          <div><p class="text-[9px] uppercase tracking-widest text-stone-600 mb-1">Date & Time</p><p class="text-stone-300">${date}</p><p class="text-stone-600 text-xs">${time}</p></div>
         </div>
         <div class="border-t border-stone-900 pt-6">
           <p class="text-[9px] uppercase tracking-widest text-stone-600 mb-4">Customer</p>
@@ -406,10 +431,16 @@
         </div>
         <div class="border-t border-stone-900 pt-6">
           <p class="text-[9px] uppercase tracking-widest text-stone-600 mb-3">Danger Zone</p>
-          <button onclick="cancelOrder('${o.orderId||o.id}','${o.name}');closeDetail();"
-            class="px-4 py-2 border border-red-900 text-[9px] uppercase tracking-widest text-red-600 hover:text-red-400 hover:border-red-600 transition-all">
-            Cancel This Order
-          </button>
+          <div class="flex gap-3 flex-wrap">
+            <button onclick="cancelOrder('${o.orderId||o.id}','${o.name}');closeDetail();"
+              class="px-4 py-2 border border-red-900 text-[9px] uppercase tracking-widest text-red-600 hover:text-red-400 hover:border-red-600 transition-all">
+              Cancel This Order
+            </button>
+            <button onclick="deleteOrder('${o.orderId||o.id}','${o.name}');closeDetail();"
+              class="px-4 py-2 border border-stone-800 text-[9px] uppercase tracking-widest text-stone-600 hover:text-red-500 hover:border-red-900 transition-all">
+              Permanently Delete
+            </button>
+          </div>
         </div>`;
       document.getElementById('detail-modal').style.display = 'flex';
     }
