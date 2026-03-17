@@ -348,7 +348,26 @@ async function submitOrder() {
   try {
     const orderId = 'RM' + Date.now();
 
-    // 1. Collect order data
+    // 1. Check if UTR already used
+    document.getElementById('submit-text').textContent = 'Verifying payment…';
+    const utrValue = document.getElementById('field-utr').value.trim();
+    const utrCheck = await withTimeout(
+      firebase.firestore().collection('orders').where('utr', '==', utrValue).get(),
+      10000, 'UTR check'
+    );
+    if (!utrCheck.empty) {
+      // UTR already exists — check if it's not cancelled
+      const existing = utrCheck.docs.map(d => d.data()).filter(o => o.status !== 'Cancelled');
+      if (existing.length > 0) {
+        showError('This UPI Ref. No. has already been used for a previous order. Please check your payment app and enter the correct reference number.');
+        btn.disabled = false;
+        document.getElementById('submit-text').textContent = 'Place Order';
+        document.getElementById('submit-spinner').classList.add('hidden');
+        return;
+      }
+    }
+
+    // 2. Collect order data
     document.getElementById('submit-text').textContent = 'Saving order…';
     const orderData = {
       orderId,
