@@ -243,8 +243,10 @@ function openOrderModal(title, price) {
   document.getElementById('field-product').value             = title;
 
   // Generate dynamic UPI QR with pre-filled amount
-  const amountNum = price.replace(/[^\d.]/g, ''); // strip "Rs. " → "189"
-  const upiDeepLink = `upi://pay?pa=${encodeURIComponent(UPI_ID)}&pn=${encodeURIComponent('Romila Handcrafted')}&am=${amountNum}&cu=INR&tn=${encodeURIComponent('Order: ' + title)}`;
+  const amountNum = price.replace(/[^\d.]/g, ''); // strip "Rs. " → "359"
+  // Build the raw UPI deep link (no encoding — QR encodes the raw string itself)
+  const upiDeepLink = `upi://pay?pa=${UPI_ID}&pn=Romila Handcrafted&am=${amountNum}&cu=INR&tn=Order: ${title}`;
+  // Pass the raw link to the QR API — the API handles encoding internally
   const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(upiDeepLink)}`;
   document.getElementById('modal-qr-img').src   = qrApiUrl;
   document.getElementById('modal-upi-link').href = upiDeepLink;
