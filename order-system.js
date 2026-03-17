@@ -243,7 +243,7 @@ function openOrderModal(title, price) {
   document.getElementById('field-product').value             = title;
 
   // Generate dynamic UPI QR with pre-filled amount
-  const amountNum = price.replace(/[^\d.]/g, ''); // strip "Rs. " → "359"
+  const amountNum = price.replace(/[^\d]/g, ''); // strip "Rs. " → "359" (digits only, no dot)
   // Build the raw UPI deep link (no encoding — QR encodes the raw string itself)
   const upiDeepLink = `upi://pay?pa=${UPI_ID}&pn=Romila Handcrafted&am=${amountNum}&cu=INR&tn=Order: ${title}`;
   // Pass the raw link to the QR API — the API handles encoding internally
