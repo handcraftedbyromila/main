@@ -10,7 +10,7 @@ const FIREBASE_CONFIG = {
   apiKey:            "AIzaSyBquB0qLjBU9tkmpFqs8l5C3X93gS3Q2vQ",
   authDomain:        "romila-shop.firebaseapp.com",
   projectId:         "romila-shop",
-  storageBucket:     "romila-shop.firebasestorage.app",
+  storageBucket:     "romila-shop.appspot.com",
   messagingSenderId: "251855825998",
   appId:             "1:251855825998:web:9974a35f179fd5324d271f"
 };
