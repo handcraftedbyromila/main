@@ -330,58 +330,93 @@ function validateForm() {
   return true;
 }
 
+// ── IMAGE COMPRESS ───────────────────────────────────────────
+// Shrinks screenshot to max 800px / ~150KB before uploading
+function compressImage(file) {
+  return new Promise((resolve) => {
+    const MAX_W = 800, QUALITY = 0.7;
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        const scale  = Math.min(1, MAX_W / img.width);
+        const canvas = document.createElement('canvas');
+        canvas.width  = img.width  * scale;
+        canvas.height = img.height * scale;
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob(blob => resolve(blob || file), 'image/jpeg', QUALITY);
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 // ── SUBMIT ORDER ─────────────────────────────────────────────
 async function submitOrder() {
   if (!validateForm()) return;
 
   const btn = document.getElementById('submit-order');
   btn.disabled = true;
-  document.getElementById('submit-text').textContent = 'Placing Order...';
   document.getElementById('submit-spinner').classList.remove('hidden');
 
-  try {
-    const screenshot = document.getElementById('field-screenshot').files[0];
-    const orderId    = 'RM' + Date.now();
+  // Animated step labels so user knows something is happening
+  const steps = ['Compressing image…', 'Uploading screenshot…', 'Saving order…', 'Almost done…'];
+  let stepIdx = 0;
+  document.getElementById('submit-text').textContent = steps[0];
+  const stepTimer = setInterval(() => {
+    stepIdx = Math.min(stepIdx + 1, steps.length - 1);
+    document.getElementById('submit-text').textContent = steps[stepIdx];
+  }, 2500);
 
-    // 1. Upload screenshot to Firebase Storage
-    const storageRef = firebase.storage().ref(`screenshots/${orderId}_${screenshot.name}`);
-    const uploadTask = await storageRef.put(screenshot);
+  try {
+    const rawFile = document.getElementById('field-screenshot').files[0];
+    const orderId = 'RM' + Date.now();
+
+    // 1. Compress image (4MB photo → ~150KB)
+    const compressed = await compressImage(rawFile);
+
+    // 2. Upload to Firebase Storage
+    const storageRef    = firebase.storage().ref(`screenshots/${orderId}.jpg`);
+    const uploadTask    = await storageRef.put(compressed, { contentType: 'image/jpeg' });
     const screenshotUrl = await uploadTask.ref.getDownloadURL();
 
-    // 2. Save order to Firestore
+    // 3. Collect order data
     const orderData = {
       orderId,
-      name:          document.getElementById('field-name').value.trim(),
-      phone:         document.getElementById('field-phone').value.trim(),
-      email:         document.getElementById('field-email').value.trim(),
-      address:       document.getElementById('field-address').value.trim(),
-      city:          document.getElementById('field-city').value.trim(),
-      pincode:       document.getElementById('field-pincode').value.trim(),
-      product:       document.getElementById('field-product').value,
-      quantity:      parseInt(document.getElementById('field-qty').value),
-      notes:         document.getElementById('field-notes').value.trim(),
+      name:     document.getElementById('field-name').value.trim(),
+      phone:    document.getElementById('field-phone').value.trim(),
+      email:    document.getElementById('field-email').value.trim(),
+      address:  document.getElementById('field-address').value.trim(),
+      city:     document.getElementById('field-city').value.trim(),
+      pincode:  document.getElementById('field-pincode').value.trim(),
+      product:  document.getElementById('field-product').value,
+      quantity: parseInt(document.getElementById('field-qty').value),
+      notes:    document.getElementById('field-notes').value.trim(),
       screenshotUrl,
-      status:        'Order Placed',
-      createdAt:     firebase.firestore.FieldValue.serverTimestamp(),
+      status:   'Order Placed',
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
     };
 
-    await firebase.firestore().collection('orders').doc(orderId).set(orderData);
+    // 4. Save to Firestore AND send email simultaneously
+    await Promise.all([
+      firebase.firestore().collection('orders').doc(orderId).set(orderData),
+      emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
+        to_email:       ADMIN_EMAIL,
+        order_id:       orderId,
+        customer_name:  orderData.name,
+        customer_phone: orderData.phone,
+        customer_email: orderData.email,
+        address:        `${orderData.address}, ${orderData.city} - ${orderData.pincode}`,
+        product:        orderData.product,
+        quantity:       orderData.quantity,
+        notes:          orderData.notes || 'None',
+        screenshot_url: screenshotUrl,
+      })
+    ]);
 
-    // 3. Send email via EmailJS
-    await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
-      to_email:       ADMIN_EMAIL,
-      order_id:       orderId,
-      customer_name:  orderData.name,
-      customer_phone: orderData.phone,
-      customer_email: orderData.email,
-      address:        `${orderData.address}, ${orderData.city} - ${orderData.pincode}`,
-      product:        orderData.product,
-      quantity:       orderData.quantity,
-      notes:          orderData.notes || 'None',
-      screenshot_url: screenshotUrl,
-    });
-
-    // 4. Show success
+    // 5. Show success
+    clearInterval(stepTimer);
     closeOrderModal();
     document.getElementById('success-order-id').textContent = `Order ID: ${orderId}`;
     document.getElementById('success-track-link').href = `track.html?email=${encodeURIComponent(orderData.email)}`;
@@ -391,6 +426,7 @@ async function submitOrder() {
     document.body.style.overflow = 'hidden';
 
   } catch (err) {
+    clearInterval(stepTimer);
     console.error(err);
     showError('Something went wrong. Please try again or contact us on WhatsApp.');
     btn.disabled = false;
